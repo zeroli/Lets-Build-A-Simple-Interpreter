@@ -2,13 +2,15 @@
 #
 # EOF (end-of-file) token is used to indicate that
 # there is no more input left for lexical analysis
-INTEGER, PLUS, MINUS, EOF = 'INTEGER', 'PLUS', 'MINUS', 'EOF'
+INTEGER, PLUS, MINUS, MUL, DIV, EOF = 'INTEGER', 'PLUS', 'MINUS', 'MUL', 'DIV', 'EOF'
 
 class Token(object):
     def __init__(self, type, value):
         # token type: INTEGER, PLUS, MINUS, or EOF
         self.type = type
-        # token value: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, '+', '-', or None
+        # token value: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+        # '+', '-', '*', '/'
+        # or None
         self.value = value
 
     def __str__(self):
@@ -27,7 +29,7 @@ class Token(object):
         return self.__str__()
 
 
-class Interpreter(object):
+class Lexer(object):
     def __init__(self, text):
         # client string input, e.g. "3 + 5", '12 - 5', etc
         self.text = text
@@ -38,7 +40,7 @@ class Interpreter(object):
         self.current_char = self.text[self.pos]
 
     def error(self):
-        raise Exception('Error parsing input')
+        raise Exception('invalid character')
 
     def advance(self):
         """Advance the 'pos' pointer and set the 'current_char' variable."""
@@ -79,26 +81,60 @@ class Interpreter(object):
             if self.current_char == '-':
                 self.advance()
                 return Token(MINUS, '-') 
+            if self.current_char == '*':
+                self.advance()
+                return Token(MUL, '*') 
+            if self.current_char == '/':
+                self.advance()
+                return Token(DIV, '/') 
 
             self.error()
         return Token(EOF, None)
 
+
+class Interpreter(object):
+    def __init__(self, lexer):
+        self.lexer = lexer
+        self.current_token = self.lexer.get_next_token()
+
+    def error(self):
+        raise Exception('invalid syntax')
+
     def eat(self, token_type):
         if self.current_token.type == token_type:
-            self.current_token = self.get_next_token()
+            self.current_token = self.lexer.get_next_token()
         else:
             self.error()
 
-    def term(self):
-        """return an INTEGER token value"""
+    def factor(self):
+        """return an INTEGER token value
+        factor := INTEGER
+        """
         token = self.current_token
         self.eat(INTEGER)
         return token.value
 
-    def expr(self):
-        """expr -> INTEGER PLUS INTEGER"""
-        self.current_token = self.get_next_token()
+    def term(self):
+        """
+        term := factor ( (*|/) factor )*
+        """
+        result = self.factor()
 
+        while self.current_token.type in (MUL, DIV):
+            token = self.current_token
+            if token.type == MUL:
+                self.eat(MUL)
+                result = result * self.factor()
+            elif token.type == DIV:
+                self.eat(DIV)
+                result = result / self.factor()
+        
+        return result
+
+    def expr(self):
+        """
+        expr := term ( (+|-) term )*
+        """
         result = self.term()
 
         while self.current_token.type in (PLUS, MINUS):
@@ -121,7 +157,7 @@ def main():
             break
         if not text:
             continue
-        interpreter = Interpreter(text)
+        interpreter = Interpreter(Lexer(text))
         result = interpreter.expr()
         print(result)
 
