@@ -2,7 +2,10 @@
 #
 # EOF (end-of-file) token is used to indicate that
 # there is no more input left for lexical analysis
-INTEGER, PLUS, MINUS, MUL, DIV, EOF = 'INTEGER', 'PLUS', 'MINUS', 'MUL', 'DIV', 'EOF'
+INTEGER, PLUS, MINUS, MUL, DIV, LPAREN, RPAREN, EOF = (
+    'INTEGER', 'PLUS', 'MINUS', 'MUL', 'DIV',
+    'LPAREN', 'RPAREN',
+    'EOF')
 
 class Token(object):
     def __init__(self, type, value):
@@ -10,6 +13,7 @@ class Token(object):
         self.type = type
         # token value: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
         # '+', '-', '*', '/'
+        # '(', ')'
         # or None
         self.value = value
 
@@ -87,6 +91,12 @@ class Lexer(object):
             if self.current_char == '/':
                 self.advance()
                 return Token(DIV, '/') 
+            if self.current_char == '(':
+                self.advance()
+                return Token(LPAREN, '(')
+            if self.current_char == ')':
+                self.advance()
+                return Token(RPAREN, ')')
 
             self.error()
         return Token(EOF, None)
@@ -108,11 +118,17 @@ class Interpreter(object):
 
     def factor(self):
         """return an INTEGER token value
-        factor := INTEGER
+        factor := INTEGER | "(" expr ")"
         """
         token = self.current_token
-        self.eat(INTEGER)
-        return token.value
+        if token.type == LPAREN:
+            self.eat(LPAREN)
+            result = self.expr() 
+            self.eat(RPAREN)
+        else:
+            result = token.value
+            self.eat(INTEGER)
+        return result
 
     def term(self):
         """
