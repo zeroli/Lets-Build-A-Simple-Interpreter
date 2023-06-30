@@ -110,6 +110,11 @@ class BinOp(AST):
         self.token = self.op = op
         self.right = right
 
+class UnaryOp(AST):
+    def __init__(self, op, expr):
+        self.token = self.op = op
+        self.expr = expr
+
 class Num(AST):
     def __init__(self, token):
         self.token = token
@@ -131,10 +136,16 @@ class Parser(object):
 
     def factor(self):
         """return an INTEGER token value
-        factor := INTEGER | "(" expr ")"
+        factor := (+|-) INTEGER | "(" expr ")"
         """
         token = self.current_token
-        if token.type == INTEGER:
+        if token.type == PLUS:
+            self.eat(PLUS)
+            node = UnaryOp(token, self.factor())
+        elif token.type == MINUS:
+            self.eat(MINUS)
+            node = UnaryOp(token, self.factor())
+        elif token.type == INTEGER:
             node = Num(token)
             self.eat(INTEGER)
         elif token.type == LPAREN:
@@ -204,6 +215,12 @@ class Interpreter(NodeVisitor):
         elif node.op.type == DIV:
             return self.visit(node.left) / self.visit(node.right)
     
+    def visit_UnaryOp(self, node):
+        if node.op.type == PLUS:
+            return self.visit(node.expr)
+        elif node.op.type == MINUS:
+            return -self.visit(node.expr)
+
     def visit_Num(self, node):
         return node.value
 
@@ -240,6 +257,14 @@ class RPNPrinter(NodeVisitor):
             self.visit(node.right)
             self.notation.append('/')
     
+    def visit_UnaryOp(self, node):
+        if node.op.type == PLUS:
+            self.visit(node.expr)
+            self.notation.append('+')
+        elif node.op.type == MINUS:
+            self.visit(node.expr)
+            self.notation.append('-')
+
     def visit_Num(self, node):
         self.notation.append(str(node.value))
 
@@ -280,6 +305,17 @@ class LispStylePrinter(NodeVisitor):
 
         self.notation.append(')')
     
+    def visit_UnaryOp(self, node):
+        self.notation.append('(')
+        if node.op.type == PLUS:
+            self.notation.append('+')
+            self.visit(node.expr)
+        elif node.op.type == MINUS:
+            self.notation.append('-')
+            self.visit(node.expr)
+
+        self.notation.append(')')
+
     def visit_Num(self, node):
         self.notation.append(str(node.value))
 
