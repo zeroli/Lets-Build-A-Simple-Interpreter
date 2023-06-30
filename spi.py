@@ -207,10 +207,43 @@ class Interpreter(NodeVisitor):
     def visit_Num(self, node):
         return node.value
 
-
     def interpret(self):
         tree = self.parser.parse()
         return self.visit(tree)
+
+class RPNPrinter(NodeVisitor):
+    """
+    Reverse Polish Notation print
+    """
+    def __init__(self, parser):
+        self.parser = parser
+        self.notation = []
+    
+    def visit_BinOp(self, node):
+        if node.op.type == PLUS:
+            self.visit(node.left)
+            self.visit(node.right)
+            self.notation.append('+')
+        elif node.op.type == MINUS:
+            self.visit(node.left)
+            self.visit(node.right)
+            self.notation.append('-')
+        elif node.op.type == MUL:
+            self.visit(node.left)
+            self.visit(node.right)
+            self.notation.append('*')
+        elif node.op.type == DIV:
+            self.visit(node.left)
+            self.visit(node.right)
+            self.notation.append('/')
+    
+    def visit_Num(self, node):
+        self.notation.append(str(node.value))
+
+    def output(self):
+        tree = self.parser.parse()
+        self.visit(tree)
+        return ' '.join(self.notation)
 
 def main():
     while True:
@@ -223,6 +256,9 @@ def main():
         parser = Parser(Lexer(text))
         interpreter = Interpreter(parser)
         result = interpreter.interpret()
+
+        #rpnprinter = RPNPrinter(parser)
+        #result = rpnprinter.output()
         print(result)
 
 if __name__ == '__main__':
