@@ -220,6 +220,9 @@ class RPNPrinter(NodeVisitor):
         self.notation = []
     
     def visit_BinOp(self, node):
+        """
+        post-order traversal
+        """
         if node.op.type == PLUS:
             self.visit(node.left)
             self.visit(node.right)
@@ -245,6 +248,46 @@ class RPNPrinter(NodeVisitor):
         self.visit(tree)
         return ' '.join(self.notation)
 
+class LispStylePrinter(NodeVisitor):
+    """
+    Lisp Style Notation print
+    """
+    def __init__(self, parser):
+        self.parser = parser
+        self.notation = []
+    
+    def visit_BinOp(self, node):
+        """
+        infix order traversal
+        """
+        self.notation.append('(')
+        if node.op.type == PLUS:
+            self.notation.append('+')
+            self.visit(node.left)
+            self.visit(node.right)
+        elif node.op.type == MINUS:
+            self.notation.append('-')
+            self.visit(node.left)
+            self.visit(node.right)
+        elif node.op.type == MUL:
+            self.notation.append('*')
+            self.visit(node.left)
+            self.visit(node.right)
+        elif node.op.type == DIV:
+            self.notation.append('/')
+            self.visit(node.left)
+            self.visit(node.right)
+
+        self.notation.append(')')
+    
+    def visit_Num(self, node):
+        self.notation.append(str(node.value))
+
+    def output(self):
+        tree = self.parser.parse()
+        self.visit(tree)
+        return ' '.join(self.notation)
+
 def main():
     while True:
         try:
@@ -256,10 +299,17 @@ def main():
         parser = Parser(Lexer(text))
         interpreter = Interpreter(parser)
         result = interpreter.interpret()
+        print '=', result
 
-        #rpnprinter = RPNPrinter(parser)
-        #result = rpnprinter.output()
-        print(result)
+        parser = Parser(Lexer(text))
+        rpnprinter = RPNPrinter(parser)
+        result = rpnprinter.output()
+        print 'RPN: ', result
+
+        parser = Parser(Lexer(text))
+        lispstyleprinter = LispStylePrinter(parser)
+        result = lispstyleprinter.output()
+        print 'Lisp:',  result
 
 if __name__ == '__main__':
     main()
