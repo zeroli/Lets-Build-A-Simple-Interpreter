@@ -101,8 +101,21 @@ class Lexer(object):
             self.error()
         return Token(EOF, None)
 
+class AST(object):
+    pass
 
-class Interpreter(object):
+class BinOp(AST):
+    def __init__(self, left, op, right):
+        self.left = left
+        self.token = self.op = op
+        self.right = right
+
+class Num(AST):
+    def __init__(self, token):
+        self.token = token
+        self.value = token.value
+
+class Parser(object):
     def __init__(self, lexer):
         self.lexer = lexer
         self.current_token = self.lexer.get_next_token()
@@ -121,60 +134,95 @@ class Interpreter(object):
         factor := INTEGER | "(" expr ")"
         """
         token = self.current_token
-        if token.type == LPAREN:
-            self.eat(LPAREN)
-            result = self.expr() 
-            self.eat(RPAREN)
-        else:
-            result = token.value
+        if token.type == INTEGER:
+            node = Num(token)
             self.eat(INTEGER)
-        return result
+        elif token.type == LPAREN:
+            self.eat(LPAREN)
+            node = self.expr() 
+            self.eat(RPAREN)
+
+        return node
 
     def term(self):
         """
         term := factor ( (*|/) factor )*
         """
-        result = self.factor()
+        node = self.factor()
 
         while self.current_token.type in (MUL, DIV):
             token = self.current_token
             if token.type == MUL:
                 self.eat(MUL)
-                result = result * self.factor()
             elif token.type == DIV:
                 self.eat(DIV)
-                result = result / self.factor()
         
-        return result
+            node = BinOp(left = node, op = token, right = self.factor())
+
+        return node
 
     def expr(self):
         """
         expr := term ( (+|-) term )*
         """
-        result = self.term()
+        node = self.term()
 
         while self.current_token.type in (PLUS, MINUS):
             token = self.current_token
 
             if token.type == PLUS:
                 self.eat(PLUS)
-                result = result + self.term()
             elif token.type == MINUS:
                 self.eat(MINUS)
-                result = result - self.term()
+            node = BinOp(left = node, op = token, right = self.term())
 
-        return result
+        return node
+
+    def parse(self):
+        return self.expr()
+
+class NodeVisitor(object):
+    def visit(self, node):
+        method_name = 'visit_' + type(node).__name__
+        visitor = getattr(self, method_name, self.generic_visit)
+        return visitor(node)
+
+    def generic_visit(self, node):
+        raise Exception('No visit_{} method'.format(type(node).__name__))
+
+class Interpreter(NodeVisitor):
+    def __init__(self, parser):
+        self.parser = parser
+
+    def visit_BinOp(self, node):
+        if node.op.type == PLUS:
+            return self.visit(node.left) + self.visit(node.right)
+        elif node.op.type == MINUS:
+            return self.visit(node.left) - self.visit(node.right)
+        elif node.op.type == MUL:
+            return self.visit(node.left) * self.visit(node.right)
+        elif node.op.type == DIV:
+            return self.visit(node.left) / self.visit(node.right)
+    
+    def visit_Num(self, node):
+        return node.value
+
+
+    def interpret(self):
+        tree = self.parser.parse()
+        return self.visit(tree)
 
 def main():
     while True:
         try:
-            text = raw_input('calc> ')
+            text = raw_input('spi> ')
         except EOFError:
             break
         if not text:
             continue
-        interpreter = Interpreter(Lexer(text))
-        result = interpreter.expr()
+        parser = Parser(Lexer(text))
+        interpreter = Interpreter(parser)
+        result = interpreter.interpret()
         print(result)
 
 if __name__ == '__main__':
