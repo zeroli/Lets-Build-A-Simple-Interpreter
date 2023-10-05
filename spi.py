@@ -2,10 +2,18 @@
 #
 # EOF (end-of-file) token is used to indicate that
 # there is no more input left for lexical analysis
-INTEGER, PLUS, MINUS, MUL, DIV, LPAREN, RPAREN, EOF = (
-    'INTEGER', 'PLUS', 'MINUS', 'MUL', 'DIV',
-    'LPAREN', 'RPAREN',
-    'EOF')
+INTEGER = 'INTEGER'
+PLUS = 'PLUS'
+MINUS = 'MINUS'
+MUL = 'MUL'
+DIV = 'DIV'
+LPAREN = 'LAPREN'
+RPAREN = 'RPAREN'
+ID = 'ID'
+ASSIGN = 'ASSIGN'
+SEMI = 'SEMI'
+DOT = 'DOT'
+EOF = 'EOF'
 
 class Token(object):
     def __init__(self, type, value):
@@ -32,6 +40,10 @@ class Token(object):
     def __repr__(self):
         return self.__str__()
 
+RESERVED_KEYWORDS = {
+    'BEGIN' : Token('BEGIN', 'BEGIN'),
+    'END': Token('END', 'END'),
+}
 
 class Lexer(object):
     def __init__(self, text):
@@ -39,8 +51,6 @@ class Lexer(object):
         self.text = text
         # self.pos is an index into self.text
         self.pos = 0
-        # current token instance
-        self.current_token = None
         self.current_char = self.text[self.pos]
 
     def error(self):
@@ -53,6 +63,12 @@ class Lexer(object):
             self.current_char = None
         else:
             self.current_char = self.text[self.pos]
+
+    def peek(self):
+        if self.pos + 1 > len(self.text) - 1:
+            return None
+        else:
+            return self.text[self.pos + 1]
 
     def skip_whitespace(self):
         while self.current_char is not None and self.current_char.isspace():
@@ -69,7 +85,7 @@ class Lexer(object):
         """Lexical analyzer (also known as scanner or tokenizer)
 
         This method is responsible for breaking a sentence
-        apart into tokens. 
+        apart into tokens.
         """
         while self.current_char is not None:
             if self.current_char.isspace():
@@ -78,19 +94,35 @@ class Lexer(object):
 
             if self.current_char.isdigit():
                 return Token(INTEGER, self.integer())
-            
+
+            if self.current_char.isalpha():
+                return self._id()
+
+            if self.current_char == ':' and self.peek() == '=':
+                self.advance()
+                self.advance()
+                return Token(ASSIGN, ':=')
+
+            if self.current_char == ';':
+                self.advance()
+                return Token(SEMI, ';')
+
+            if self.current_char == '.':
+                self.advance()
+                return Token(DOT, '.')
+
             if self.current_char == '+':
                 self.advance()
                 return Token(PLUS, '+')
             if self.current_char == '-':
                 self.advance()
-                return Token(MINUS, '-') 
+                return Token(MINUS, '-')
             if self.current_char == '*':
                 self.advance()
-                return Token(MUL, '*') 
+                return Token(MUL, '*')
             if self.current_char == '/':
                 self.advance()
-                return Token(DIV, '/') 
+                return Token(DIV, '/')
             if self.current_char == '(':
                 self.advance()
                 return Token(LPAREN, '(')
@@ -100,6 +132,15 @@ class Lexer(object):
 
             self.error()
         return Token(EOF, None)
+
+    def _id(self):
+        """Handle identifiers and reserved keywords"""
+        result = ''
+        while self.current_char is not None and self.current_char.isalnum():
+            result += self.current_char
+            self.advance()
+        token = RESERVED_KEYWORDS.get(result, Token(ID, result))
+        return token
 
 class AST(object):
     pass
@@ -150,7 +191,7 @@ class Parser(object):
             self.eat(INTEGER)
         elif token.type == LPAREN:
             self.eat(LPAREN)
-            node = self.expr() 
+            node = self.expr()
             self.eat(RPAREN)
 
         return node
@@ -167,7 +208,7 @@ class Parser(object):
                 self.eat(MUL)
             elif token.type == DIV:
                 self.eat(DIV)
-        
+
             node = BinOp(left = node, op = token, right = self.factor())
 
         return node
@@ -214,7 +255,7 @@ class Interpreter(NodeVisitor):
             return self.visit(node.left) * self.visit(node.right)
         elif node.op.type == DIV:
             return self.visit(node.left) / self.visit(node.right)
-    
+
     def visit_UnaryOp(self, node):
         if node.op.type == PLUS:
             return self.visit(node.expr)
@@ -235,7 +276,7 @@ class RPNPrinter(NodeVisitor):
     def __init__(self, parser):
         self.parser = parser
         self.notation = []
-    
+
     def visit_BinOp(self, node):
         """
         post-order traversal
@@ -256,7 +297,7 @@ class RPNPrinter(NodeVisitor):
             self.visit(node.left)
             self.visit(node.right)
             self.notation.append('/')
-    
+
     def visit_UnaryOp(self, node):
         if node.op.type == PLUS:
             self.visit(node.expr)
@@ -280,7 +321,7 @@ class LispStylePrinter(NodeVisitor):
     def __init__(self, parser):
         self.parser = parser
         self.notation = []
-    
+
     def visit_BinOp(self, node):
         """
         infix order traversal
@@ -304,7 +345,7 @@ class LispStylePrinter(NodeVisitor):
             self.visit(node.right)
 
         self.notation.append(')')
-    
+
     def visit_UnaryOp(self, node):
         self.notation.append('(')
         if node.op.type == PLUS:
@@ -349,5 +390,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
