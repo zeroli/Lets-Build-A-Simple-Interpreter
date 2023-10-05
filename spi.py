@@ -3,6 +3,11 @@
 # EOF (end-of-file) token is used to indicate that
 # there is no more input left for lexical analysis
 INTEGER = 'INTEGER'
+REAL = 'REAL'
+INTEGER_CONST = 'INTEGER_CONST'
+REAL_CONST = 'REAL_CONST'
+INTEGER_DIV = 'INTEGER_DIV'
+REAL_DIV = 'REAL_DIV'
 PLUS = 'PLUS'
 MINUS = 'MINUS'
 MUL = 'MUL'
@@ -13,6 +18,10 @@ ID = 'ID'
 ASSIGN = 'ASSIGN'
 SEMI = 'SEMI'
 DOT = 'DOT'
+COLON = 'COLON'
+COMMA = 'COMMA'
+VAR = 'VAR'
+PROGRAM = 'PROGRAM'
 BEGIN = 'BEGIN'
 END = 'END'
 EOF = 'EOF'
@@ -43,8 +52,13 @@ class Token(object):
         return self.__str__()
 
 RESERVED_KEYWORDS = {
-    'BEGIN' : Token('BEGIN', 'BEGIN'),
-    'END': Token('END', 'END'),
+    'PROGRAM': Token(PROGRAM, 'PROGRAM'),
+    'VAR': Token(VAR, 'VAR'),
+    'DIV': Token(INTEGER_DIV, 'DIV'),
+    'INTEGER': Token(INTEGER, 'INTEGER'),
+    'REAL': Token(REAL, 'REAL'),
+    'BEGIN' : Token(BEGIN, 'BEGIN'),
+    'END': Token(END, 'END'),
 }
 
 class Lexer(object):
@@ -76,12 +90,28 @@ class Lexer(object):
         while self.current_char is not None and self.current_char.isspace():
             self.advance()
 
-    def integer(self):
+    def number(self):
+        """Return a (multidigit) integer or float consumed from the input"""
         result = ''
-        while self.current_char is not None and self.current_char.isdigit():
+        while self.current_token is not None and self.current_char.isdigit():
             result += self.current_char
             self.advance()
-        return int(result)
+
+        if self.current_char == '.':
+            result += self.current_char
+            self.advance()
+
+            while (
+                self.current_char is not None and
+                self.current_char.isdigit()
+            ):
+                result += self.current_char
+                self.advance()
+            token = Token(REAL_CONST, float(result))
+        else:
+            token = Token(INTEGER_CONST, int(result))
+
+        return token
 
     def get_next_token(self):
         """Lexical analyzer (also known as scanner or tokenizer)
@@ -95,15 +125,27 @@ class Lexer(object):
                 continue
 
             if self.current_char.isdigit():
-                return Token(INTEGER, self.integer())
+                return self.number()
 
             if self.current_char.isalpha():
                 return self._id()
 
-            if self.current_char == ':' and self.peek() == '=':
+            if self.current_char == '{':
                 self.advance()
+                self.skip_comment()
+                continue
+
+            if self.current_char == ':':
                 self.advance()
-                return Token(ASSIGN, ':=')
+                if self.current_char == '=':
+                    self.advance()
+                    return Token(ASSIGN, ':=')
+                else:
+                    return Token(COLON, ':')
+
+            if self.current_char == ',':
+                self.advance()
+                return Token(COMMA, ',')
 
             if self.current_char == ';':
                 self.advance()
@@ -143,6 +185,11 @@ class Lexer(object):
             self.advance()
         token = RESERVED_KEYWORDS.get(result, Token(ID, result))
         return token
+
+    def skip_comment(self):
+        while self.current_char != '}':
+            self.advance()
+        self.advance()  # the closing curly brace
 
 class AST(object):
     pass
@@ -184,7 +231,16 @@ class NoOp(AST):
 
 class Parser(object):
     """
-    program : compound_statement DOT
+    program : PROGRAM variable SEMI block DOT
+
+    block: declarations compound_statement
+
+    declarations: VAR (variable_declaration SEMI)+
+                    | empty
+
+    variable_declaration: ID (COMMA ID)* COLON type_spec
+
+    type_spec: INTEGER | REAL
 
     compound_statement : BEGIN statement_list END
 
@@ -201,11 +257,12 @@ class Parser(object):
 
     expr: term ((PLUS | MINUS) term)*
 
-    term: factor ((MUL | DIV) factor)*
+    term: factor ((MUL | INTEGER_DIV | FLOAT_DIV) factor)*
 
     factor : PLUS factor
            | MINUS factor
-           | INTEGER
+           | INTEGER_CONST
+           | FLOAT_CONST
            | LPAREN expr RPAREN
            | variable
 
@@ -309,9 +366,12 @@ class Parser(object):
         elif token.type == MINUS:
             self.eat(MINUS)
             node = UnaryOp(token, self.factor())
-        elif token.type == INTEGER:
+        elif token.type == INTEGER_CONST:
             node = Num(token)
             self.eat(INTEGER)
+        elif token.type == REAL_CONST:
+            node = Num(token)
+            self.eat(REAL_CONST)
         elif token.type == LPAREN:
             self.eat(LPAREN)
             node = self.expr()
