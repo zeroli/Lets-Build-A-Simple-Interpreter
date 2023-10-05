@@ -16,13 +16,64 @@ class ASTVisualizer(NodeVisitor):
         self.ncount = 1
         self.dot_header = [textwrap.dedent("""\
         digraph astgraph {
-          node [shape=circle, fontsize=12, fontname="Courier", height=.1];
+          node [shape=circle, fontsize=12, fontname="Arial", height=.2];
           ranksep=.3;
           edge [arrowsize=.5]
 
         """)]
         self.dot_body = []
         self.dot_footer = ['}']
+
+    def visit_Program(self, node):
+        s = '  node{} [label="Program"]\n'.format(self.ncount)
+        self.dot_body.append(s)
+        node._num = self.ncount
+        self.ncount += 1
+
+        self.visit(node.block)
+
+        s = '  node{} -> node{}\n'.format(node._num, node.block._num)
+        self.dot_body.append(s)
+
+    def visit_Block(self, node):
+        s = '  node{} [label="Block"]\n'.format(self.ncount)
+        self.dot_body.append(s)
+        node._num = self.ncount
+        self.ncount += 1
+
+        for declaration in node.declarations:
+            self.visit(declaration)
+        self.visit(node.compound_statement)
+
+        for decl_node in node.declarations:
+            s = '  node{} -> node{}\n'.format(node._num, decl_node._num)
+            self.dot_body.append(s)
+
+        s = '  node{} -> node{}\n'.format(
+            node._num,
+            node.compound_statement._num
+        )
+        self.dot_body.append(s)
+
+    def visit_VarDecl(self, node):
+        s = '  node{} [label="VarDecl"]\n'.format(self.ncount)
+        self.dot_body.append(s)
+        node._num = self.ncount
+        self.ncount += 1
+
+        self.visit(node.var_node)
+        s = '  node{} -> node{}\n'.format(node._num, node.var_node._num)
+        self.dot_body.append(s)
+
+        self.visit(node.type_node)
+        s = '  node{} -> node{}\n'.format(node._num, node.type_node._num)
+        self.dot_body.append(s)
+
+    def visit_Type(self, node):
+        s = '  node{} [label="{}"]\n'.format(self.ncount, node.token.value)
+        self.dot_body.append(s)
+        node._num = self.ncount
+        self.ncount += 1
 
     def visit_Num(self, node):
         s = '  node{} [label="{}"]\n'.format(self.ncount, node.token.value)
