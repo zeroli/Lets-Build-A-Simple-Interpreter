@@ -1,3 +1,5 @@
+import os, sys
+
 # Token types
 #
 # EOF (end-of-file) token is used to indicate that
@@ -69,20 +71,20 @@ class Symbol(object):
 
 class BuiltinTypeSymbol(Symbol):
     def __init__(self, name):
-        super().__init__(name)
+        super(BuiltinTypeSymbol, self).__init__(name)
 
     def __str__(self):
         return self.name
 
     def __repr__(self):
-        return "<{class_anme}{name='{name}')>".format(
-            class_name=self.__class__.__name__,
-            name = self.name,
+        return "<{class_name}(name='{name}'))>".format(
+            class_name = self.__class__.__name__,
+            name = self.name
         )
 
 class VarSymbol(Symbol):
     def __init__(self, name, type):
-        super().__init__(name, type)
+        super(VarSymbol, self).__init__(name, type)
 
     def __str__(self):
         return "<{class_name}(name='{name}', type='{type}'>".format(
@@ -93,9 +95,11 @@ class VarSymbol(Symbol):
 
     __repr__ = __str__
 
-class SymbolTable(object):
-    def __init__(self):
+class ScopedSymbolTable(object):
+    def __init__(self, scope_name, scope_level):
         self._symbols = {}
+        self.scope_name = scope_name
+        self.scope_level = scope_level
         self._init_builtins()
 
     def _init_builtins(self):
@@ -103,8 +107,16 @@ class SymbolTable(object):
         self.define(BuiltinTypeSymbol('REAL'))
 
     def __str__(self):
-        symtab_header = 'Symbol table contents'
-        lines = ['\n', symtab_header, '_' * len(symtab_header)]
+        h1 = 'SCOPE (SCOPED SYMBOL TABLE)'
+        lines = ['\n', h1, '=' * len(h1)]
+        for header_name, header_value in (
+            ('Scope name', self.scope_name),
+            ('Scope level', self.scope_level),
+        ):
+            lines.append('%-15s: %s' % (header_name, header_value))
+
+        h2 = 'Scope (Scoped symbol table) content'
+        lines.extend([h2, '-' * len(h2)])
         lines.extend(
             ('%7s: %r' % (key, value))
             for key, value in self._symbols.items()
@@ -826,7 +838,10 @@ class SymbolTableBuilder(NodeVisitor):
 
 class SemanticAnalyzer(NodeVisitor):
     def __init__(self):
-        self.symtab = SymbolTable()
+        self.symtab = ScopedSymbolTable(
+            scope_name='global',
+            scope_level=1
+        )
 
     def visit_Block(self, node):
         for declaration in node.declarations:
@@ -850,7 +865,7 @@ class SemanticAnalyzer(NodeVisitor):
         type_name = node.type_node.value
         type_symbol = self.symtab.lookup(type_name)
 
-        var_name = node.var_name.value
+        var_name = node.var_node.value
         var_symbol = VarSymbol(var_name, type_symbol)
 
         if self.symtab.lookup(var_name) is not None:
@@ -861,7 +876,7 @@ class SemanticAnalyzer(NodeVisitor):
 
     def visit_Var(self, node):
         var_name = node.value
-        var_symbol = self.symtabl.lookup(var_name)
+        var_symbol = self.symtab.lookup(var_name)
         if var_symbol is None:
             raise Exception(
                 "Error: Symbol(identifier) not found '{}'".format(var_name)
@@ -875,28 +890,25 @@ class SemanticAnalyzer(NodeVisitor):
         self.visit(node.left)
         self.visit(node.right)
 
+    def visit_ProcedureDecl(self, node):
+        pass
+
+    def visit_Num(self, node):
+        pass
+
 def main():
-    while True:
-        try:
-            text = raw_input('spi> ')
-        except EOFError:
-            break
-        if not text:
-            continue
-        parser = Parser(Lexer(text))
-        interpreter = Interpreter(parser)
-        result = interpreter.interpret()
-        print '=', result
+    if len(sys.argv) > 1:
+        text = open(sys.argv[1], 'r').read()
+    else:
+        text = raw_input('spi>')
 
-        parser = Parser(Lexer(text))
-        rpnprinter = RPNPrinter(parser)
-        result = rpnprinter.output()
-        print 'RPN: ', result
-
-        parser = Parser(Lexer(text))
-        lispstyleprinter = LispStylePrinter(parser)
-        result = lispstyleprinter.output()
-        print 'Lisp:',  result
+    if not text:
+        exit(1)
+    parser = Parser(Lexer(text))
+    program = parser.parse()
+    run = SemanticAnalyzer()
+    run.visit(program)
+    print(run.symtab)
 
 if __name__ == '__main__':
     main()
