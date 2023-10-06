@@ -157,11 +157,14 @@ class ScopedSymbolTable(object):
         print('Define: {}'.format(symbol))
         self._symbols[symbol.name] = symbol
 
-    def lookup(self, name):
+    def lookup(self, name, current_scope_only=False):
         print('Lookup: {}'.format(name))
         symbol = self._symbols.get(name)
         if symbol is not None:
             return symbol
+
+        if current_scope_only:
+            return None
 
         if self.enclosing_scope is not None:
             return self.enclosing_scope.lookup(name)
@@ -946,6 +949,10 @@ class SemanticAnalyzer(NodeVisitor):
         var_name = node.var_node.value
         var_symbol = VarSymbol(var_name, type_symbol)
 
+        if self.current_scope.lookup(var_name, current_scope_only=True):
+                raise Exception(
+                    "Error: Duplicate identifier '%s' found" % var_name
+                )
         self.current_scope.define(var_symbol)
 
     def visit_Var(self, node):
