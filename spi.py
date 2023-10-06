@@ -160,7 +160,12 @@ class ScopedSymbolTable(object):
     def lookup(self, name):
         print('Lookup: {}'.format(name))
         symbol = self._symbols.get(name)
-        return symbol
+        if symbol is not None:
+            return symbol
+
+        if self.enclosing_scope is not None:
+            return self.enclosing_scope.lookup(name)
+
 class Lexer(object):
     def __init__(self, text):
         # client string input, e.g. "3 + 5", '12 - 5', etc
@@ -941,10 +946,6 @@ class SemanticAnalyzer(NodeVisitor):
         var_name = node.var_node.value
         var_symbol = VarSymbol(var_name, type_symbol)
 
-        if self.current_scope.lookup(var_name) is not None:
-            raise Exception(
-                "Error: duplicate identifier '{}' found".format(var_name)
-            )
         self.current_scope.define(var_symbol)
 
     def visit_Var(self, node):
