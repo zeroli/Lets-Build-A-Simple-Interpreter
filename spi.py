@@ -55,13 +55,21 @@ class Token(object):
 
 RESERVED_KEYWORDS = {
     'PROGRAM': Token(PROGRAM, 'PROGRAM'),
+    'program': Token(PROGRAM, 'PROGRAM'),
     'VAR': Token(VAR, 'VAR'),
+    'var': Token(VAR, 'VAR'),
     'DIV': Token(INTEGER_DIV, 'DIV'),
+    'div': Token(INTEGER_DIV, 'DIV'),
     'INTEGER': Token(INTEGER, 'INTEGER'),
+    'integer': Token(INTEGER, 'INTEGER'),
     'REAL': Token(REAL, 'REAL'),
+    'real': Token(REAL, 'REAL'),
     'BEGIN' : Token(BEGIN, 'BEGIN'),
+    'begin' : Token(BEGIN, 'BEGIN'),
     'END': Token(END, 'END'),
+    'end': Token(END, 'END'),
     'PROCEDURE': Token(PROCEDURE, 'PROCEDURE'),
+    'procedure': Token(PROCEDURE, 'PROCEDURE'),
 }
 
 class Symbol(object):
@@ -95,11 +103,26 @@ class VarSymbol(Symbol):
 
     __repr__ = __str__
 
+class ProcedureSymbol(Symbol):
+    def __init__(self, name, params=None):
+        super(ProcedureSymbol, self).__init__(name)
+        self.params = params if params is not None else []
+
+    def __str__(self):
+        return '<{class_name}(name={name}, parameters={params})>'.format(
+            class_name = self.__class__.__name__,
+            name = self.name,
+            params = self.params,
+        )
+
+    __repr__ = __str__
+
 class ScopedSymbolTable(object):
-    def __init__(self, scope_name, scope_level):
+    def __init__(self, scope_name, scope_level, enclosing_scope=None):
         self._symbols = {}
         self.scope_name = scope_name
         self.scope_level = scope_level
+        self.enclosing_scope = enclosing_scope
         self._init_builtins()
 
     def _init_builtins(self):
@@ -112,6 +135,9 @@ class ScopedSymbolTable(object):
         for header_name, header_value in (
             ('Scope name', self.scope_name),
             ('Scope level', self.scope_level),
+            ('Enclosing scope',
+                self.enclosing_scope.scope_name if self.enclosing_scope else None
+            ),
         ):
             lines.append('%-15s: %s' % (header_name, header_value))
 
@@ -135,8 +161,6 @@ class ScopedSymbolTable(object):
         print('Lookup: {}'.format(name))
         symbol = self._symbols.get(name)
         return symbol
-
-
 class Lexer(object):
     def __init__(self, text):
         # client string input, e.g. "3 + 5", '12 - 5', etc
@@ -286,9 +310,15 @@ class VarDecl(AST):
         self.type_node = type_node
 
 class ProcedureDecl(AST):
-    def __init__(self, proc_name, block_node):
+    def __init__(self, proc_name, params, block_node):
         self.proc_name = proc_name
+        self.params = params # a list of param nodes
         self.block_node = block_node
+
+class Param(AST):
+    def __init__(self, var_node, type_node):
+        self.var_node = var_node
+        self.type_node = type_node
 
 class Type(AST):
     def __init__(self, token):
@@ -405,7 +435,7 @@ class Parser(object):
     def declarations(self):
         """
         declarations: VAR (variable_declaration SEMI)+
-                        | (PROCEDURE variable SEMI block SEMI)*
+                        | (PROCEDURE variable (LPAREN formal_parameter_list RPAREN)? SEMI block SEMI)*
                         | empty
         EXAMPLE:
             VAR
@@ -432,10 +462,16 @@ class Parser(object):
             self.eat(PROCEDURE)
             proc_name = self.current_token.value
             self.eat(ID)
+            params = []
+            if self.current_token.type == LPAREN:
+                self.eat(LPAREN)
+                params = self.formal_parameter_list()
+                self.eat(RPAREN)
+
             self.eat(SEMI)
 
             block_node = self.block()
-            proc_decl = ProcedureDecl(proc_name, block_node)
+            proc_decl = ProcedureDecl(proc_name, params, block_node)
             declarations.append(proc_decl)
             self.eat(SEMI)
 
@@ -477,6 +513,25 @@ class Parser(object):
             self.eat(REAL)
         node = Type(token)
         return node
+
+    def formal_parameter_list(self):
+        """
+        formal_parameter_list: formal_parameters
+                                    | formal_parameters SEMI forma_parameter_list
+        """
+        params = self.formal_parameters()
+
+        while self.current_token.type == SEMI:
+            self.eat(SEMI)
+            params.extend(self.formal_parameter_list())
+        return params
+
+    def formal_parameters(self):
+        """
+        forma_parameters: ID (COMMA ID)* COLON type_spec
+        """
+        param_nodes = self.variable_declaration()
+        return param_nodes
 
     def compound_statement(self):
         """
@@ -627,7 +682,7 @@ class NodeVisitor(object):
 class Interpreter(NodeVisitor):
     def __init__(self, parser):
         self.parser = parser
-        self.GLOBAL_SCOPE = {}
+        self.current_scope = None
 
     def visit_Program(self, node):
         self.visit(node.block)
@@ -638,7 +693,13 @@ class Interpreter(NodeVisitor):
         self.visit(node.compound_statement)
 
     def visit_VarDecl(self, node):
-        pass
+        type_name = node.type_node.value
+        type_symbol = self.current_scope.lookup(type_name)
+
+        var_name = node.var_node.value
+        var_symbol = VarSymbol(var_name, type_symbol)
+
+        self.current_scope.define(var_symbol)
 
     def visit_ProcedureDecl(self, node):
         pass
@@ -676,15 +737,18 @@ class Interpreter(NodeVisitor):
 
     def visit_Assign(self, node):
         var_name = node.left.value
-        self.GLOBAL_SCOPE[var_name] = self.visit(node.right)
+        var = self.current_scope.lookup(var_name)
+        node.right
 
     def visit_Var(self, node):
         var_name = node.value
-        val = self.GLOBAL_SCOPE.get(var_name)
-        if val is None:
-            raise NameError(repr(var_name))
+        var = self.current_scope.lookup(var_name)
+        if var is None:
+            raise Exception(
+                "Error: Symbol(identifier) not found {}".format(var_name)
+            )
         else:
-            return val
+            return var
 
     def interpret(self):
         tree = self.parser.parse()
@@ -838,10 +902,7 @@ class SymbolTableBuilder(NodeVisitor):
 
 class SemanticAnalyzer(NodeVisitor):
     def __init__(self):
-        self.symtab = ScopedSymbolTable(
-            scope_name='global',
-            scope_level=1
-        )
+        self.current_scope = None
 
     def visit_Block(self, node):
         for declaration in node.declarations:
@@ -849,7 +910,19 @@ class SemanticAnalyzer(NodeVisitor):
         self.visit(node.compound_statement)
 
     def visit_Program(self, node):
+        print('Enter scope: global')
+        global_scope = ScopedSymbolTable(
+            scope_name = 'global',
+            scope_level = 1,
+            enclosing_scope=self.current_scope,
+        )
+        self.current_scope = global_scope
+
         self.visit(node.block)
+
+        print(global_scope)
+        self.current_scope = self.current_scope.enclosing_scope
+        print('Leave scope: global')
 
     def visit_Compound(self, node):
         for child in node.children:
@@ -863,20 +936,20 @@ class SemanticAnalyzer(NodeVisitor):
         and insert the type symbol in the symbol table
         """
         type_name = node.type_node.value
-        type_symbol = self.symtab.lookup(type_name)
+        type_symbol = self.current_scope.lookup(type_name)
 
         var_name = node.var_node.value
         var_symbol = VarSymbol(var_name, type_symbol)
 
-        if self.symtab.lookup(var_name) is not None:
+        if self.current_scope.lookup(var_name) is not None:
             raise Exception(
                 "Error: duplicate identifier '{}' found".format(var_name)
             )
-        self.symtab.define(var_symbol)
+        self.current_scope.define(var_symbol)
 
     def visit_Var(self, node):
         var_name = node.value
-        var_symbol = self.symtab.lookup(var_name)
+        var_symbol = self.current_scope.lookup(var_name)
         if var_symbol is None:
             raise Exception(
                 "Error: Symbol(identifier) not found '{}'".format(var_name)
@@ -891,7 +964,30 @@ class SemanticAnalyzer(NodeVisitor):
         self.visit(node.right)
 
     def visit_ProcedureDecl(self, node):
-        pass
+        proc_name = node.proc_name
+        proc_symbol = ProcedureSymbol(proc_name)
+        self.current_scope.define(proc_symbol)
+
+        print('Enter scope: {}'.format(proc_name))
+
+        procedure_scope = ScopedSymbolTable(
+            scope_name = proc_name,
+            scope_level = self.current_scope.scope_level + 1,
+            enclosing_scope=self.current_scope,
+        )
+        self.current_scope = procedure_scope
+
+        for param in node.params:
+            param_type = self.current_scope.lookup(param.type_node.value)
+            param_name = param.var_node.value
+            var_symbol = VarSymbol(param_name, param_type)
+            self.current_scope.define(var_symbol)
+            proc_symbol.params.append(var_symbol)
+
+        self.visit(node.block_node)
+        print(procedure_scope)
+        self.current_scope = self.current_scope.enclosing_scope
+        print('Leave scope: {}'.format(proc_name))
 
     def visit_Num(self, node):
         pass
@@ -908,7 +1004,7 @@ def main():
     program = parser.parse()
     run = SemanticAnalyzer()
     run.visit(program)
-    print(run.symtab)
+
 
 if __name__ == '__main__':
     main()
